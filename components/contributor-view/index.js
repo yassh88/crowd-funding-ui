@@ -4,24 +4,30 @@ import { ethers } from "ethers"
 import { useMoralis, useWeb3Contract } from "react-moralis"
 import { contractAddresses, abi } from "../../constants"
 
-export default function ManagerView() {
+export default function ContributorView() {
   const dispatch = useNotification()
   const [isVisible, setVisible] = useState(false)
   const [isLoading, setLoading] = useState(false)
   const [requestCount, setRequestsCount] = useState(0)
-  const [recipient, setRecipient] = useState(
-    "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199"
-  )
-  const [amount, setAmount] = useState(ethers.utils.parseEther("0.5"))
-  const [description, setDescription] = useState("")
+  const [amount, setAmount] = useState(ethers.utils.parseEther("0.2"))
   const { chainId: chainIdHex, isWeb3Enabled } = useMoralis()
-
   const chainId = parseInt(chainIdHex)
   const crowdFundingAddress =
     chainId in contractAddresses ? contractAddresses[chainId][0] : null
+  const optionsForContribute = {
+    abi: abi,
+    contractAddress: crowdFundingAddress,
+    functionName: "contribute",
+    chainId: 31337,
+    msgValue: amount,
+  }
 
-  const { runContractFunction: createRequest, data: enterTxResponse } =
+  const { runContractFunction: contribute, data: enterTxResponse } =
     useWeb3Contract()
+  const {
+    runContractFunction: approveRequest,
+    data: enterApproveRequestTxResponse,
+  } = useWeb3Contract()
   const { runContractFunction: getCountRequests } = useWeb3Contract({
     abi: abi,
     contractAddress: crowdFundingAddress,
@@ -29,28 +35,6 @@ export default function ManagerView() {
     functionName: "getCountRequests",
     params: {},
   })
-
-  useEffect(() => {
-    ;(async () => {
-      if (enterTxResponse) {
-        console.log("enterTxResponse", enterTxResponse)
-        const txReceipt = await enterTxResponse.wait(1)
-        console.log("txReceipt", txReceipt)
-        console.log("txReceipt.events", txReceipt.events)
-        if (
-          txReceipt.events[0].args.value &&
-          txReceipt.events[0].args.recipient
-        ) {
-          console.log(txReceipt.events[0].args.value.toString())
-          console.log(txReceipt.events[0].args.recipient.toString())
-          handleNewNotification("success", `Request is created`)
-        } else {
-          handleNewNotification("error", `Error while creating request`)
-        }
-        setLoading(false)
-      }
-    })()
-  }, [enterTxResponse])
   const handleNewNotification = (type, message) => {
     dispatch({
       type,
@@ -60,59 +44,65 @@ export default function ManagerView() {
       position: "topR",
     })
   }
-  const {
-    runContractFunction: finalizeRequest,
-    data: enterFinalizeRequestTxResponse,
-  } = useWeb3Contract()
   useEffect(() => {
     ;(async () => {
-      if (enterFinalizeRequestTxResponse) {
-        console.log(
-          "enterFinalizeRequestTxResponse",
-          enterFinalizeRequestTxResponse
-        )
-        const txReceipt = await enterFinalizeRequestTxResponse.wait(1)
+      if (enterTxResponse) {
+        console.log("enterTxResponse", enterTxResponse)
+        const txReceipt = await enterTxResponse.wait(1)
         console.log("txReceipt", txReceipt)
         console.log("txReceipt.events", txReceipt.events)
-        if (txReceipt.events[0].args.recipent) {
-          console.log(txReceipt.events[0].args.recipent.toString())
-          handleNewNotification(
-            "success",
-            `You have successfully finalize request`
-          )
+        if (
+          txReceipt.events[0].args.contributer &&
+          txReceipt.events[0].args.amount
+        ) {
+          console.log(txReceipt.events[0].args.contributer.toString())
+          console.log(txReceipt.events[0].args.amount.toString())
+          handleNewNotification("success", `You have successfully contributed`)
         } else {
-          handleNewNotification("error", `Error while finalize request`)
+          handleNewNotification("error", `Error while contributing`)
         }
       }
     })()
-  }, [enterFinalizeRequestTxResponse])
-  const options = {
-    abi: abi,
-    contractAddress: crowdFundingAddress,
-    functionName: "createRequest",
-    chainId: 31337,
-    params: {
-      _discription: description,
-      _value: amount,
-      _recipent: recipient,
-    },
+  }, [enterTxResponse])
+
+  useEffect(() => {
+    ;(async () => {
+      if (enterApproveRequestTxResponse) {
+        console.log(
+          "enterApproveRequestTxResponse",
+          enterApproveRequestTxResponse
+        )
+        const txReceipt = await enterApproveRequestTxResponse.wait(1)
+        console.log("txReceipt", txReceipt)
+        console.log("txReceipt.events", txReceipt.events)
+        if (txReceipt.events[0].args.approver) {
+          console.log(txReceipt.events[0].args.approver.toString())
+          handleNewNotification(
+            "success",
+            `You have successfully approved request`
+          )
+        } else {
+          handleNewNotification("error", `Error while approved request`)
+        }
+      }
+    })()
+  }, [enterApproveRequestTxResponse])
+
+  const getCountRequestsUI = async () => {
+    const reCount = await getCountRequests()
+    console.log("reCount", reCount)
+    setRequestsCount(reCount)
   }
-  const getFinalizeOptions = (_index) => {
+  const getApproveRequestOptions = (_index) => {
     return {
       abi: abi,
       contractAddress: crowdFundingAddress,
-      functionName: "finalizeRequest",
+      functionName: "approveRequest",
       chainId: 31337,
       params: {
         _index,
       },
     }
-  }
-  const getCountRequestsUI = async () => {
-    const reCount = await getCountRequests()
-    console.log("reCount", reCount)
-    setRequestsCount(reCount)
-    handleNewNotification("success", `Request count is ${reCount}`)
   }
   const renderRequests = () => {
     const requests = []
@@ -122,9 +112,15 @@ export default function ManagerView() {
           theme="secondary"
           type="button"
           onClick={() =>
-            finalizeRequest({ params: getFinalizeOptions(index - 1) })
+            approveRequest({
+              params: getApproveRequestOptions(index - 1),
+              onError: (error) => {
+                handleNewNotification("error", `Error while approved request`)
+                console.log(error)
+              },
+            })
           }
-          text={`Finalize Request ${index}`}
+          text={`Approve Request ${index}`}
         />
       )
     }
@@ -140,10 +136,10 @@ export default function ManagerView() {
       onCloseButtonPressed={() => setVisible(!isVisible)}
       onOk={() => {
         setLoading(true)
-        createRequest({ params: options })
+        contribute({ params: optionsForContribute })
         setVisible(false)
       }}
-      title={<div style={{ display: "flex", gap: 10 }}>Create Request</div>}
+      title={<div style={{ display: "flex", gap: 10 }}>Contribute</div>}
     >
       <div
         style={{
@@ -151,26 +147,15 @@ export default function ManagerView() {
         }}
       >
         <Input
-          label="Recipient Address "
-          width="100%"
-          onChange={(e) => setRecipient(e.target.value)}
-          value={recipient}
-        />
-        <Input
           label="Amount"
           onChange={(e) => setAmount(e.target.value)}
           width="100%"
           value={amount}
         />
-        <Input
-          label="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          width="100%"
-        />
       </div>
     </Modal>
   )
+
   if (isLoading) {
     return <Loading />
   }
@@ -181,13 +166,13 @@ export default function ManagerView() {
           theme="primary"
           type="button"
           onClick={() => setVisible(!isVisible)}
-          text="Create Request "
+          text="Contribute "
         />
         <Button
           theme="primary"
           type="button"
           onClick={() => getCountRequestsUI()}
-          text={`Get Finalize Request`}
+          text={`Get Request for approve`}
         />
       </div>
       <div>
@@ -197,3 +182,6 @@ export default function ManagerView() {
     </nav>
   )
 }
+
+// c1 => 0x70997970C51812dc3A010C7d01b50e0d17dc79C8
+// c2 => 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC

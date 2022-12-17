@@ -3,6 +3,7 @@ import { useMoralis, useWeb3Contract } from "react-moralis"
 import { useState, useEffect } from "react"
 import { contractAddresses, abi } from "../../constants"
 import ManagerView from "../manager-view"
+import ContributorView from "../contributor-view"
 
 export default function LandingPage() {
   const [manager, setManager] = useState("a")
@@ -42,7 +43,7 @@ export default function LandingPage() {
     } else if (!manager || !account) {
       return <Loading />
     } else {
-      return "welcome contributor"
+      return <ContributorView />
     }
   }
   return <div className="p-5 border-b-2 flex flex-row">{getView()}</div>
